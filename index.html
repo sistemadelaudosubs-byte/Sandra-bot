@@ -1,0 +1,395 @@
+<html style="margin:0;padding:0;">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+(function(){
+  var s = document.createElement('style');
+  s.textContent = ':root{--bg:#f0f2f5;--card:#ffffff;--text:#111b21;--muted:#667781;--verde:#00a884;--verde-soft:rgba(0,168,132,.12);--azul:#2563eb;--azul-soft:rgba(37,99,235,.12);--vermelho:#dc2626;--border:rgba(0,0,0,.06);--balao-user:#d9fdd3;--balao-bot:#ffffff;--balao-atendente:#d1e9ff}';
+  s.textContent += '*{box-sizing:border-box}';
+  s.textContent += '.msg-in{animation:slideIn .25s ease}@keyframes slideIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}';
+  s.textContent += '.typing span{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--muted);margin:0 2px;animation:bounce 1.3s infinite}.typing span:nth-child(2){animation-delay:.18s}.typing span:nth-child(3){animation-delay:.36s}@keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-4px)}}';
+  s.textContent += '.scroll::-webkit-scrollbar{width:5px}.scroll::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12);border-radius:5px}';
+  s.textContent += '.piscar{animation:piscar 1s infinite}@keyframes piscar{50%{opacity:.3}}';
+  document.head.appendChild(s);
+})();
+</script>
+<div style="background-color:transparent;box-sizing:border-box;">
+<div id="app" style="font-family:'Figtree',Segoe UI,Helvetica,Arial,sans-serif;background:#e9ecef;color:var(--text);min-height:100%;padding:10px"></div>
+</div>
+
+<script>
+/* ============================================================
+   🔌 CONEXÃO COM SEU SUPABASE
+   ============================================================ */
+const SUPA_URL = "https://vushqzsxhnfrlxyuodcb.supabase.co";
+const SUPA_KEY = "sb_publishable_51NxSh4jXDXd7Ea_JoSOag_oaNZooEJ";
+const supabase = window.supabase.createClient(SUPA_URL, SUPA_KEY, {
+  realtime: { params: { eventsPerSecond: 10 } }
+});
+
+/* ============================================================
+   🔔 NOTIFICAÇÃO SONORA
+   ============================================================ */
+const SOM = {
+  ativo: localStorage.getItem('som_atendimento') === '1',
+  ctx: null,
+  iniciar(){
+    try{ this.ctx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){}
+  },
+  tocar(){
+    if(!this.ativo) return;
+    if(!this.ctx) this.iniciar();
+    if(!this.ctx) return;
+    if(this.ctx.state === 'suspended') this.ctx.resume();
+    const tocarTom = (freq, inicio, dur=0.12) => {
+      const o = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      o.type = 'sine'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0, this.ctx.currentTime+inicio);
+      g.gain.linearRampToValueAtTime(0.25, this.ctx.currentTime+inicio+0.01);
+      g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime+inicio+dur);
+      o.connect(g); g.connect(this.ctx.destination);
+      o.start(this.ctx.currentTime+inicio);
+      o.stop(this.ctx.currentTime+inicio+dur+0.02);
+    };
+    tocarTom(880, 0);
+    tocarTom(1320, 0.14);
+  },
+  ligar(){ this.ativo=true; localStorage.setItem('som_atendimento','1'); this.iniciar(); this.tocar(); },
+  desligar(){ this.ativo=false; localStorage.setItem('som_atendimento','0'); }
+};
+
+/* ============================================================
+   🧠 CÉREBRO DA SANDRA ROBÔ
+   ============================================================ */
+const SOL = {
+  trava:['Desliga da tomada 30s amor 😊','Testa velocidade da internet (mínimo 15MB)','Troca p/ Servidor BR 2 nas configs','Fecha app completamente'],
+  login:['Vê se não tem espaço no final da senha querido','Caps Lock desligado viu?','Gero senha nova se quiser','Clica em esqueci minha senha'],
+  canais:['Atualiza lista de canais primeiro 📺','Se for 1-2 canais é manutenção','Limpa cache do app'],
+  qualidade:['Bota qualidade em 1080p/4K no player','Conecta Wi-Fi 5GHz','Tira outros aparelhos da internet'],
+  pagamento:['PIX cai na hora 💸','Cartão até 24h','Boleto 3 dias úteis','Manda comprovante que vejo já'],
+  instalacao:['Smart TV: loja oficial','TV Box: Downloader','Celular: Play/App Store','Te mando link se quiser']
+};
+const R = a => a[Math.floor(Math.random()*a.length)];
+const tempoDig = t => Math.min(2600, Math.max(600, t.length*32+350));
+const hora = d => d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');
+
+function cerebro(t){
+  t = t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+  if(/^(oi|ola|bom dia|boa tarde|boa noite|opa|e ai|eai|oie)\b/.test(t))
+    return {tipo:'m', msgs:R([['Oiii querido! Tudo bem? 😊','Sou a Sandra, em que posso ajudar?'],['Bom dia vida! 🥰','Me conta o que precisa que a gente resolve.']])};
+  if(/(obrigad|valeu|funcionou|resolveu|deu certo)/.test(t))
+    return {tipo:'m', msgs:R([['De nadaaa amor 🥰','Qualquer coisa é só chamar!'],['Que ótima notícia! Fico feliz ❤️']])};
+  if(/(tudo bem|e voce|e você)/.test(t))
+    return {tipo:'m', msgs:[['Estou ótima obrigada! 😊','E você? Qual problema temos hoje?']]};
+  if(/(humano|pessoa|voce e robo|você é robô|robô|robo|atendente)/.test(t))
+    return {tipo:'pedir_humano'};
+
+  const mapa=[
+    {k:['trava','travando','cai','caindo','congela','cortando'],s:'trava',intro:['Ah que saco né 😩','Vamos resolver já querido:']},
+    {k:['logar','login','senha','entrar','não entra','bloqueado'],s:'login',intro:['Acontece muito viu 😊','Tenta isso:']},
+    {k:['canal','canais','fora do ar','tela preta','não abre'],s:'canais',intro:['Vamos ver isso 📺','Tenta aí:']},
+    {k:['qualidade','pixel','ruim','embassada','resolução'],s:'qualidade',intro:['Vamos deixar perfeito 💪','Olha só:']},
+    {k:['pagamento','pagar','paguei','pix','cartao','boleto','bloqueou'],s:'pagamento',intro:['Verificando seu pagamento 💸','Olha como funciona:']},
+    {k:['instalar','baixar','app','aplicativo','smart tv','tv box'],s:'instalacao',intro:['Claro que ajudo a instalar 📲','Depende do aparelho:']}
+  ];
+  for(let it of mapa) if(it.k.some(p=>t.includes(p))) return {tipo:'s', s:it.s, intro:it.intro};
+  return {tipo:'m', msgs:R([['Desculpa querido, não entendi bem 😅','Pode explicar melhor o que acontece?'],['Hmm, me conta mais detalhes por favor 🥰']])};
+}
+
+/* ============================================================
+   🆔 CLIENTE / DETECTA PAINEL
+   ============================================================ */
+function pegaClienteId(){
+  let id = localStorage.getItem('iptv_cliente_id');
+  if(!id){ id = 'cli_'+Math.random().toString(36).slice(2,12); localStorage.setItem('iptv_cliente_id',id); }
+  return id;
+}
+const CLIENTE_ID = pegaClienteId();
+const EH_PAINEL = new URLSearchParams(location.search).get('painel') === 'true';
+
+/* ============================================================
+   💾 FUNÇÕES BANCO
+   ============================================================ */
+async function enviarMsg(dados){ await supabase.from('mensagens').insert(dados); }
+async function modoAtual(clienteId){
+  const {data} = await supabase.from('mensagens').select('modo_atendimento').eq('cliente_id',clienteId).order('id',{ascending:false}).limit(1);
+  return (data && data[0]) ? data[0].modo_atendimento : 'auto';
+}
+async function listarConversas(){
+  const {data} = await supabase.from('mensagens').select('cliente_id,nome_cliente,texto,remetente,modo_atendimento,created_at,lida').order('id',{ascending:false});
+  const convs = {};
+  (data||[]).forEach(m=>{
+    if(!convs[m.cliente_id]) convs[m.cliente_id] = {id:m.cliente_id, nome:m.nome_cliente, ultima:m, msgs:[], naoLidas:0};
+    convs[m.cliente_id].msgs.push(m);
+    if(m.remetente==='cliente' && !m.lida) convs[m.cliente_id].naoLidas++;
+  });
+  return Object.values(convs).sort((a,b)=>new Date(b.ultima.created_at)-new Date(a.ultima.created_at));
+}
+async function marcarLidas(clienteId){
+  await supabase.from('mensagens').update({lida:true}).eq('cliente_id',clienteId).eq('remetente','cliente').eq('lida',false);
+}
+async function assumirHumano(clienteId){
+  await enviarMsg({cliente_id:clienteId, remetente:'humano', texto:'✅ Atendente humano assumiu o chat. Olá! Sou a Sandra, em que posso ajudar?', modo_atendimento:'humano'});
+}
+async function voltarAuto(clienteId){
+  await enviarMsg({cliente_id:clienteId, remetente:'bot', texto:'🤖 Voltando ao atendimento automático.', modo_atendimento:'auto'});
+}
+
+/* ============================================================
+   🤖 ROBÔ SÓ RESPONDE SE MODO = AUTO
+   ============================================================ */
+async function roboRespondeSePuder(clienteId, textoCliente){
+  const modo = await modoAtual(clienteId);
+  if(modo==='humano') return;
+  const r = cerebro(textoCliente);
+  if(r.tipo==='pedir_humano'){
+    await enviarMsg({cliente_id, remetente:'bot', texto:'Claro! Já chamo um atendente humano para você 🧑', modo_atendimento:'humano'});
+    return;
+  }
+  if(r.tipo==='m'){
+    for(let i=0;i<r.msgs.length;i++){
+      await new Promise(rs=>setTimeout(rs, tempoDig(r.msgs[i])+300));
+      await enviarMsg({cliente_id, remetente:'bot', texto:r.msgs[i], modo_atendimento:'auto'});
+    }
+  } else {
+    await new Promise(rs=>setTimeout(rs, 900));
+    await enviarMsg({cliente_id, remetente:'bot', texto:r.intro[0], modo_atendimento:'auto'});
+    await new Promise(rs=>setTimeout(rs, 700));
+    await enviarMsg({cliente_id, remetente:'bot', texto:r.intro[1], modo_atendimento:'auto'});
+    for(let i=0;i<SOL[r.s].length;i++){
+      await new Promise(rs=>setTimeout(rs, 1100));
+      await enviarMsg({cliente_id, remetente:'bot', texto:`${i+1}. ${SOL[r.s][i]}`, modo_atendimento:'auto'});
+    }
+  }
+}
+
+/* ============================================================
+   🖼️ RENDERIZA CHAT
+   ============================================================ */
+function renderChat(alvo, msgs, euSou='cliente'){
+  alvo.innerHTML = '';
+  if(!msgs.length) return;
+  msgs.sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+  msgs.forEach(m=>{
+    const w=document.createElement('div'); w.className='msg-in';
+    const direita = (euSou==='cliente' && m.remetente==='cliente') || (euSou==='atendente' && m.remetente==='humano');
+    w.style.cssText = `display:flex;justify-content:${direita?'flex-end':'flex-start'};align-items:flex-end;gap:6px;padding:1px 2px`;
+    if(!direita){
+      const av=document.createElement('div');
+      const cor = m.remetente==='humano' ? 'linear-gradient(135deg,#2563eb,#1e40af)' : 'linear-gradient(135deg,#00a884,#008069)';
+      av.style.cssText = `width:24px;height:24px;border-radius:50%;background:${cor};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:10.5px;flex-shrink:0;margin-bottom:2px`;
+      av.textContent = m.remetente==='humano' ? '🧑' : (m.remetente==='cliente'?'C':'S');
+      w.appendChild(av);
+    }
+    const b=document.createElement('div');
+    let corFundo, raio, rot='';
+    if(m.remetente==='cliente'){ corFundo='var(--balao-user)'; raio='12px 12px 2px 12px'; }
+    else if(m.remetente==='humano'){ corFundo='var(--balao-atendente)'; raio='12px 12px 12px 2px'; rot='<div style="font-size:9.5px;color:var(--azul);font-weight:800;margin-bottom:2px">🧑 HUMANO</div>'; }
+    else { corFundo='var(--balao-bot)'; raio='12px 12px 12px 2px'; rot='<div style="font-size:9.5px;color:var(--verde);font-weight:700;margin-bottom:2px">🤖 AUTOMÁTICO</div>'; }
+    b.style.cssText = `max-width:80%;padding:6px 9px 5px 9px;border-radius:${raio};background:${corFundo};box-shadow:0 1px 1px rgba(0,0,0,.05);font-size:13.8px;line-height:1.4`;
+    b.innerHTML = rot + m.texto + `<span style="font-size:9px;color:#667781;float:right;margin-left:6px;margin-top:5px">${hora(new Date(m.created_at))}</span>`;
+    w.appendChild(b); alvo.appendChild(w);
+  });
+  alvo.scrollTop = alvo.scrollHeight;
+}
+
+/* ============================================================
+   👤 TELA DO CLIENTE
+   ============================================================ */
+function renderCliente(){
+  app.innerHTML = `
+  <div class="max-w-xl mx-auto" style="background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.08);overflow:hidden">
+    <div style="background:#f0f2f5;padding:10px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border)">
+      <div style="position:relative"><div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#00a884,#008069);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px">S</div><span style="position:absolute;bottom:0;right:0;width:12px;height:12px;border-radius:50%;background:#25d366;border:2px solid #f0f2f5"></span></div>
+      <div style="flex:1"><div style="font-weight:600;font-size:15px">Sandra 👩‍💼</div><div id="statusCli" style="font-size:11.5px;color:var(--muted);margin-top:-1px">online</div></div>
+    </div>
+    <div id="chatCli" class="scroll" style="height:560px;overflow-y:auto;padding:14px 10px;background:#efeae2;display:flex;flex-direction:column;gap:4px"></div>
+    <div id="digitCli" style="display:none;padding:4px 14px;font-size:10.5px;color:var(--muted);background:#f0f2f5;border-top:1px solid var(--border)">Sandra está digitando...</div>
+    <div style="padding:8px 10px;background:#f0f2f5;display:flex;gap:8px;align-items:center">
+      <input id="inputCli" placeholder="Digite sua mensagem..." style="flex:1;min-height:42px;padding:0 14px;border:none;border-radius:22px;font-size:14px;outline:none;background:#fff">
+      <button id="enviarCli" style="width:42px;height:42px;border:none;border-radius:50%;background:var(--verde);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center">➤</button>
+    </div>
+  </div>`;
+
+  const chat = document.getElementById('chatCli');
+  const input = document.getElementById('inputCli');
+  const btn = document.getElementById('enviarCli');
+  const statusCli = document.getElementById('statusCli');
+
+  async function carregar(){
+    const {data} = await supabase.from('mensagens').select('*').eq('cliente_id',CLIENTE_ID).order('id');
+    renderChat(chat, data||[], 'cliente');
+    if(data && data.length){
+      const ult = data[data.length-1];
+      statusCli.textContent = ult.modo_atendimento==='humano' ? '🧑 atendente humano respondendo' : '🤖 atendimento automático';
+    }
+  }
+  async function enviar(){
+    const t = input.value.trim(); if(!t) return;
+    input.value='';
+    const modo = await modoAtual(CLIENTE_ID);
+    await enviarMsg({cliente_id:CLIENTE_ID, nome_cliente:'Cliente '+CLIENTE_ID.slice(-4).toUpperCase(), remetente:'cliente', texto:t, modo_atendimento:modo});
+    if(modo==='auto') roboRespondeSePuder(CLIENTE_ID, t);
+  }
+  btn.onclick=enviar; input.addEventListener('keypress',e=>{if(e.key==='Enter')enviar()});
+
+  supabase.channel('cliente-'+CLIENTE_ID).on('postgres_changes',{event:'INSERT',schema:'public',table:'mensagens',filter:`cliente_id=eq.${CLIENTE_ID}`},()=>carregar()).subscribe();
+  carregar();
+
+  if(!localStorage.getItem('iptv_saudou_'+CLIENTE_ID)){
+    localStorage.setItem('iptv_saudou_'+CLIENTE_ID,'1');
+    setTimeout(async ()=>{
+      await enviarMsg({cliente_id:CLIENTE_ID, nome_cliente:'Cliente '+CLIENTE_ID.slice(-4).toUpperCase(), remetente:'bot', texto:'Oiii! Tudo bem? Sou a Sandra 😊', modo_atendimento:'auto'});
+      await new Promise(r=>setTimeout(r,600));
+      await enviarMsg({cliente_id:CLIENTE_ID, remetente:'bot', texto:'Me conta o que precisa que eu ajudo em tudo!', modo_atendimento:'auto'});
+    }, 500);
+  }
+}
+
+/* ============================================================
+   🧑 PAINEL DO ATENDENTE
+   ============================================================ */
+let CONVERSA_ATIVA = null;
+
+function renderPainel(){
+  app.innerHTML = `
+  <div class="max-w-6xl mx-auto mb-2" style="background:#fff;border-radius:12px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="font-weight:800">🧑 PAINEL DO ATENDENTE</div>
+      <div id="statusSom" style="padding:4px 10px;border-radius:14px;font-size:11.5px;font-weight:700;background:${SOM.ativo?'var(--verde-soft);color:var(--verde)':'#fef3c7;color:#92400e'}">🔔 SOM: ${SOM.ativo?'LIGADO':'DESLIGADO — CLIQUE AQUI'}</div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button id="btnSom" style="min-height:34px;padding:0 12px;border:none;border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer;background:${SOM.ativo?'var(--vermelho);color:#fff':'var(--verde);color:#fff'}">${SOM.ativo?'🔕 Desligar som':'🔔 Ativar som'}</button>
+      <button id="btnTesteSom" style="min-height:34px;padding:0 12px;border:1px solid var(--border);border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer;background:#fff">🔊 Testar som</button>
+    </div>
+  </div>
+  <div class="max-w-6xl mx-auto" style="display:grid;grid-template-columns:320px 1fr;gap:10px;min-height:600px">
+    <div style="background:#fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column">
+      <div style="padding:10px;background:#eff6ff;border-bottom:1px solid var(--border);font-weight:700;color:var(--azul)">📋 Conversas</div>
+      <div id="listaConvs" class="scroll" style="flex:1;overflow-y:auto"></div>
+    </div>
+    <div style="background:#fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column">
+      <div id="topoConv" style="padding:10px 14px;background:#eff6ff;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <div style="font-weight:700;color:var(--azul)">Selecione uma conversa ao lado →</div>
+        <div id="botoesModo"></div>
+      </div>
+      <div id="chatAtd" class="scroll" style="flex:1;min-height:450px;overflow-y:auto;padding:14px 10px;background:#f8fafc;display:flex;flex-direction:column;gap:4px"></div>
+      <div style="padding:8px 10px;background:#eff6ff;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px">
+        <div id="rpRapidas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="inputAtd" placeholder="Selecione uma conversa..." style="flex:1;min-height:42px;padding:0 14px;border:1px solid #bfdbfe;border-radius:22px;font-size:14px;outline:none;background:#fff" disabled>
+          <button id="enviarAtd" style="width:42px;height:42px;border:none;border-radius:50%;background:var(--azul);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center" disabled>➤</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  const statusSom = document.getElementById('statusSom');
+  const btnSom = document.getElementById('btnSom');
+  const btnTesteSom = document.getElementById('btnTesteSom');
+  const listaConvs = document.getElementById('listaConvs');
+  const chatAtd = document.getElementById('chatAtd');
+  const topoConv = document.getElementById('topoConv');
+  const botoesModo = document.getElementById('botoesModo');
+  const inputAtd = document.getElementById('inputAtd');
+  const enviarAtd = document.getElementById('enviarAtd');
+  const rpRapidas = document.getElementById('rpRapidas');
+
+  function atualizaBotoesSom(){
+    statusSom.textContent = `🔔 SOM: ${SOM.ativo?'LIGADO':'DESLIGADO — CLIQUE AQUI'}`;
+    statusSom.style.cssText = `padding:4px 10px;border-radius:14px;font-size:11.5px;font-weight:700;background:${SOM.ativo?'var(--verde-soft);color:var(--verde)':'#fef3c7;color:#92400e'}`;
+    btnSom.textContent = SOM.ativo ? '🔕 Desligar som' : '🔔 Ativar som';
+    btnSom.style.background = SOM.ativo ? 'var(--vermelho)' : 'var(--verde)';
+  }
+  btnSom.onclick = () => { SOM.ativo ? SOM.desligar() : SOM.ligar(); atualizaBotoesSom(); };
+  btnTesteSom.onclick = () => { SOM.ligar(); atualizaBotoesSom(); SOM.tocar(); };
+  statusSom.style.cursor='pointer';
+  statusSom.onclick = btnSom.onclick;
+  atualizaBotoesSom();
+
+  const rapidas = ['Olá! Em que posso ajudar?','Um momento por favor...','Poderia me explicar melhor?','Já resolveu querido? 😊','Por nada! Qualquer coisa é só chamar ❤️'];
+  rapidas.forEach(t=>{
+    const b=document.createElement('button'); b.textContent=t;
+    b.style.cssText='min-height:26px;padding:3px 10px;border:none;border-radius:14px;background:#dbeafe;color:var(--azul);font-size:11px;font-weight:600;cursor:pointer';
+    b.onclick=()=>{ if(CONVERSA_ATIVA){ inputAtd.value=t; inputAtd.focus(); }};
+    rpRapidas.appendChild(b);
+  });
+
+  async function carregarLista(){
+    const convs = await listarConversas();
+    listaConvs.innerHTML='';
+    if(!convs.length){ listaConvs.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Nenhuma conversa ainda</div>'; return; }
+    convs.forEach(c=>{
+      const d=document.createElement('div');
+      const ativa = CONVERSA_ATIVA===c.id;
+      d.style.cssText = `padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;${ativa?'background:var(--azul-soft);border-left:3px solid var(--azul)':''}`;
+      d.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-weight:700;font-size:13.5px">${c.nome} ${c.naoLidas?`<span class="piscar" style="background:var(--vermelho);color:#fff;padding:1px 7px;border-radius:10px;font-size:10px;margin-left:6px">${c.naoLidas}</span>`:''}</div>
+          <div style="font-size:10px;color:var(--muted)">${hora(new Date(c.ultima.created_at))}</div>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.ultima.remetente==='cliente'?'👤 ':'🧑 '}${c.ultima.texto}</div>
+        <div style="font-size:10.5px;margin-top:3px;color:${c.ultima.modo_atendimento==='humano'?'var(--azul)':'var(--verde)'}">${c.ultima.modo_atendimento==='humano'?'🧑 Humano':'🤖 Automático'}</div>`;
+      d.onclick=()=>abrirConversa(c.id);
+      listaConvs.appendChild(d);
+    });
+  }
+
+  async function abrirConversa(id){
+    CONVERSA_ATIVA = id;
+    await marcarLidas(id);
+    const {data} = await supabase.from('mensagens').select('*').eq('cliente_id',id).order('id');
+    const modo = (data && data.length) ? data[data.length-1].modo_atendimento : 'auto';
+    topoConv.innerHTML = `<div><div style="font-weight:700;color:var(--azul)">💬 Conversa: Cliente ${id.slice(-4).toUpperCase()}</div><div style="font-size:11px;color:var(--muted)">Modo atual: ${modo==='humano'?'🧑 HUMANO':'🤖 AUTOMÁTICO'}</div></div>`;
+    botoesModo.innerHTML='';
+    const bHum=document.createElement('button'); bHum.textContent='🧑 Virar Humano';
+    bHum.style.cssText=`min-height:32px;padding:0 12px;border:none;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;${modo==='humano'?'background:#ccc;pointer-events:none;color:#666':'background:var(--azul);color:#fff'}`;
+    bHum.onclick=async ()=>{await assumirHumano(id);abrirConversa(id)};
+    const bAuto=document.createElement('button'); bAuto.textContent='🤖 Voltar Automático';
+    bAuto.style.cssText=`min-height:32px;padding:0 12px;border:none;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;margin-left:6px;${modo==='auto'?'background:#ccc;pointer-events:none;color:#666':'background:var(--verde);color:#fff'}`;
+    bAuto.onclick=async ()=>{await voltarAuto(id);abrirConversa(id)};
+    botoesModo.appendChild(bHum); botoesModo.appendChild(bAuto);
+    renderChat(chatAtd, data||[], 'atendente');
+    inputAtd.disabled = modo!=='humano';
+    enviarAtd.disabled = modo!=='humano';
+    inputAtd.placeholder = modo==='humano' ? '✅ Você está respondendo! Escreva...' : '🔒 Modo automático - clique em Virar Humano';
+    carregarLista();
+  }
+
+  async function enviarHumano(){
+    if(!CONVERSA_ATIVA) return;
+    const t = inputAtd.value.trim(); if(!t) return;
+    inputAtd.value='';
+    await enviarMsg({cliente_id:CONVERSA_ATIVA, remetente:'humano', atendente_nome:'Sandra', texto:t, modo_atendimento:'humano'});
+  }
+  enviarAtd.onclick=enviarHumano;
+  inputAtd.addEventListener('keypress',e=>{if(e.key==='Enter')enviarHumano()});
+
+  let ultimoId = 0;
+  supabase.channel('painel-todas').on('postgres_changes',{event:'INSERT',schema:'public',table:'mensagens'},async (payload)=>{
+    const m = payload.new;
+    if(m.remetente === 'cliente' && m.id > ultimoId){
+      ultimoId = m.id;
+      const conversaAbertaECorreta = (CONVERSA_ATIVA === m.cliente_id) && document.visibilityState === 'visible';
+      if(!conversaAbertaECorreta){
+        SOM.tocar();
+        if('Notification' in window && Notification.permission==='granted'){
+          try{ new Notification('🔔 Nova mensagem - '+ (m.nome_cliente||'Cliente'), {body:m.texto}) }catch(e){}
+        }
+      }
+    }
+    carregarLista();
+    if(CONVERSA_ATIVA) abrirConversa(CONVERSA_ATIVA);
+  }).subscribe();
+
+  if('Notification' in window && Notification.permission === 'default'){
+    Notification.requestPermission().catch(()=>{});
+  }
+
+  carregarLista();
+}
+
+EH_PAINEL ? renderPainel() : renderCliente();
+</script>
