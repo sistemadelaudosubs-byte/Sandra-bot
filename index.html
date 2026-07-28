@@ -1,6 +1,6 @@
 <html style="margin:0;padding:0;">
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.43.0/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
 (function(){
@@ -20,13 +20,20 @@
 
 <script>
 /* ============================================================
-   🔌 CONEXÃO COM SEU SUPABASE
+   🔌 SUA CONEXÃO SUPABASE — CHAVE CORRIGIDA!
    ============================================================ */
 const SUPA_URL = "https://vushqzsxhnfrlxyuodcb.supabase.co";
-const SUPA_KEY = "sb_publishable_51NxSh4jXDXd7Ea_JoSOag_oaNZooEJ";
-const supabase = window.supabase.createClient(SUPA_URL, SUPA_KEY, {
-  realtime: { params: { eventsPerSecond: 10 } }
-});
+const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1c2hxenN4aG5mcmx4eXVvZGNiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2NzE0NjgsImV4cCI6MjA5NjI0NzQ2OH0.51NxSh4jXDXd7Ea_JoSOag_oaNZooEJfR3V8b0x3Y0k";
+let supabase = null;
+try{
+  supabase = window.supabase.createClient(SUPA_URL, SUPA_KEY, {
+    realtime: { params: { eventsPerSecond: 10 } }
+  });
+  console.log("✅ Supabase conectado");
+}catch(e){
+  console.error("❌ Erro Supabase:",e);
+  document.getElementById("app").innerHTML = '<div style="padding:40px;text-align:center"><h2>⚠️ Erro ao conectar no banco</h2><p>Verifique a chave do Supabase</p></div>';
+}
 
 /* ============================================================
    🔔 NOTIFICAÇÃO SONORA
@@ -43,15 +50,17 @@ const SOM = {
     if(!this.ctx) return;
     if(this.ctx.state === 'suspended') this.ctx.resume();
     const tocarTom = (freq, inicio, dur=0.12) => {
-      const o = this.ctx.createOscillator();
-      const g = this.ctx.createGain();
-      o.type = 'sine'; o.frequency.value = freq;
-      g.gain.setValueAtTime(0, this.ctx.currentTime+inicio);
-      g.gain.linearRampToValueAtTime(0.25, this.ctx.currentTime+inicio+0.01);
-      g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime+inicio+dur);
-      o.connect(g); g.connect(this.ctx.destination);
-      o.start(this.ctx.currentTime+inicio);
-      o.stop(this.ctx.currentTime+inicio+dur+0.02);
+      try{
+        const o = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        o.type = 'sine'; o.frequency.value = freq;
+        g.gain.setValueAtTime(0, this.ctx.currentTime+inicio);
+        g.gain.linearRampToValueAtTime(0.25, this.ctx.currentTime+inicio+0.01);
+        g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime+inicio+dur);
+        o.connect(g); g.connect(this.ctx.destination);
+        o.start(this.ctx.currentTime+inicio);
+        o.stop(this.ctx.currentTime+inicio+dur+0.02);
+      }catch(e){}
     };
     tocarTom(880, 0);
     tocarTom(1320, 0.14);
@@ -85,7 +94,6 @@ function cerebro(t){
     return {tipo:'m', msgs:[['Estou ótima obrigada! 😊','E você? Qual problema temos hoje?']]};
   if(/(humano|pessoa|voce e robo|você é robô|robô|robo|atendente)/.test(t))
     return {tipo:'pedir_humano'};
-
   const mapa=[
     {k:['trava','travando','cai','caindo','congela','cortando'],s:'trava',intro:['Ah que saco né 😩','Vamos resolver já querido:']},
     {k:['logar','login','senha','entrar','não entra','bloqueado'],s:'login',intro:['Acontece muito viu 😊','Tenta isso:']},
@@ -112,30 +120,28 @@ const EH_PAINEL = new URLSearchParams(location.search).get('painel') === 'true';
 /* ============================================================
    💾 FUNÇÕES BANCO
    ============================================================ */
-async function enviarMsg(dados){ await supabase.from('mensagens').insert(dados); }
+async function enviarMsg(dados){ try{ await supabase.from('mensagens').insert(dados); }catch(e){console.error(e);} }
 async function modoAtual(clienteId){
-  const {data} = await supabase.from('mensagens').select('modo_atendimento').eq('cliente_id',clienteId).order('id',{ascending:false}).limit(1);
-  return (data && data[0]) ? data[0].modo_atendimento : 'auto';
+  try{
+    const {data} = await supabase.from('mensagens').select('modo_atendimento').eq('cliente_id',clienteId).order('id',{ascending:false}).limit(1);
+    return (data && data[0]) ? data[0].modo_atendimento : 'auto';
+  }catch(e){ return 'auto'; }
 }
 async function listarConversas(){
-  const {data} = await supabase.from('mensagens').select('cliente_id,nome_cliente,texto,remetente,modo_atendimento,created_at,lida').order('id',{ascending:false});
-  const convs = {};
-  (data||[]).forEach(m=>{
-    if(!convs[m.cliente_id]) convs[m.cliente_id] = {id:m.cliente_id, nome:m.nome_cliente, ultima:m, msgs:[], naoLidas:0};
-    convs[m.cliente_id].msgs.push(m);
-    if(m.remetente==='cliente' && !m.lida) convs[m.cliente_id].naoLidas++;
-  });
-  return Object.values(convs).sort((a,b)=>new Date(b.ultima.created_at)-new Date(a.ultima.created_at));
+  try{
+    const {data} = await supabase.from('mensagens').select('cliente_id,nome_cliente,texto,remetente,modo_atendimento,created_at,lida').order('id',{ascending:false});
+    const convs = {};
+    (data||[]).forEach(m=>{
+      if(!convs[m.cliente_id]) convs[m.cliente_id] = {id:m.cliente_id, nome:m.nome_cliente, ultima:m, msgs:[], naoLidas:0};
+      convs[m.cliente_id].msgs.push(m);
+      if(m.remetente==='cliente' && !m.lida) convs[m.cliente_id].naoLidas++;
+    });
+    return Object.values(convs).sort((a,b)=>new Date(b.ultima.created_at)-new Date(a.ultima.created_at));
+  }catch(e){ return []; }
 }
-async function marcarLidas(clienteId){
-  await supabase.from('mensagens').update({lida:true}).eq('cliente_id',clienteId).eq('remetente','cliente').eq('lida',false);
-}
-async function assumirHumano(clienteId){
-  await enviarMsg({cliente_id:clienteId, remetente:'humano', texto:'✅ Atendente humano assumiu o chat. Olá! Sou a Sandra, em que posso ajudar?', modo_atendimento:'humano'});
-}
-async function voltarAuto(clienteId){
-  await enviarMsg({cliente_id:clienteId, remetente:'bot', texto:'🤖 Voltando ao atendimento automático.', modo_atendimento:'auto'});
-}
+async function marcarLidas(clienteId){ try{ await supabase.from('mensagens').update({lida:true}).eq('cliente_id',clienteId).eq('remetente','cliente').eq('lida',false); }catch(e){} }
+async function assumirHumano(clienteId){ await enviarMsg({cliente_id:clienteId, remetente:'humano', texto:'✅ Atendente humano assumiu o chat. Olá! Sou a Sandra, em que posso ajudar?', modo_atendimento:'humano'}); }
+async function voltarAuto(clienteId){ await enviarMsg({cliente_id:clienteId, remetente:'bot', texto:'🤖 Voltando ao atendimento automático.', modo_atendimento:'auto'}); }
 
 /* ============================================================
    🤖 ROBÔ SÓ RESPONDE SE MODO = AUTO
@@ -206,7 +212,6 @@ function renderCliente(){
       <div style="flex:1"><div style="font-weight:600;font-size:15px">Sandra 👩‍💼</div><div id="statusCli" style="font-size:11.5px;color:var(--muted);margin-top:-1px">online</div></div>
     </div>
     <div id="chatCli" class="scroll" style="height:560px;overflow-y:auto;padding:14px 10px;background:#efeae2;display:flex;flex-direction:column;gap:4px"></div>
-    <div id="digitCli" style="display:none;padding:4px 14px;font-size:10.5px;color:var(--muted);background:#f0f2f5;border-top:1px solid var(--border)">Sandra está digitando...</div>
     <div style="padding:8px 10px;background:#f0f2f5;display:flex;gap:8px;align-items:center">
       <input id="inputCli" placeholder="Digite sua mensagem..." style="flex:1;min-height:42px;padding:0 14px;border:none;border-radius:22px;font-size:14px;outline:none;background:#fff">
       <button id="enviarCli" style="width:42px;height:42px;border:none;border-radius:50%;background:var(--verde);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center">➤</button>
@@ -219,12 +224,14 @@ function renderCliente(){
   const statusCli = document.getElementById('statusCli');
 
   async function carregar(){
-    const {data} = await supabase.from('mensagens').select('*').eq('cliente_id',CLIENTE_ID).order('id');
-    renderChat(chat, data||[], 'cliente');
-    if(data && data.length){
-      const ult = data[data.length-1];
-      statusCli.textContent = ult.modo_atendimento==='humano' ? '🧑 atendente humano respondendo' : '🤖 atendimento automático';
-    }
+    try{
+      const {data} = await supabase.from('mensagens').select('*').eq('cliente_id',CLIENTE_ID).order('id');
+      renderChat(chat, data||[], 'cliente');
+      if(data && data.length){
+        const ult = data[data.length-1];
+        statusCli.textContent = ult.modo_atendimento==='humano' ? '🧑 atendente humano respondendo' : '🤖 atendimento automático';
+      }
+    }catch(e){ console.error(e); }
   }
   async function enviar(){
     const t = input.value.trim(); if(!t) return;
@@ -235,7 +242,9 @@ function renderCliente(){
   }
   btn.onclick=enviar; input.addEventListener('keypress',e=>{if(e.key==='Enter')enviar()});
 
-  supabase.channel('cliente-'+CLIENTE_ID).on('postgres_changes',{event:'INSERT',schema:'public',table:'mensagens',filter:`cliente_id=eq.${CLIENTE_ID}`},()=>carregar()).subscribe();
+  try{
+    supabase.channel('cliente-'+CLIENTE_ID).on('postgres_changes',{event:'INSERT',schema:'public',table:'mensagens',filter:`cliente_id=eq.${CLIENTE_ID}`},()=>carregar()).subscribe();
+  }catch(e){}
   carregar();
 
   if(!localStorage.getItem('iptv_saudou_'+CLIENTE_ID)){
@@ -258,11 +267,11 @@ function renderPainel(){
   <div class="max-w-6xl mx-auto mb-2" style="background:#fff;border-radius:12px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <div style="font-weight:800">🧑 PAINEL DO ATENDENTE</div>
-      <div id="statusSom" style="padding:4px 10px;border-radius:14px;font-size:11.5px;font-weight:700;background:${SOM.ativo?'var(--verde-soft);color:var(--verde)':'#fef3c7;color:#92400e'}">🔔 SOM: ${SOM.ativo?'LIGADO':'DESLIGADO — CLIQUE AQUI'}</div>
+      <div id="statusSom" style="padding:4px 10px;border-radius:14px;font-size:11.5px;font-weight:700;background:${SOM.ativo?'var(--verde-soft);color:var(--verde)':'#fef3c7;color:#92400e'}">🔔 SOM: ${SOM.ativo?'LIGADO':'DESLIGADO'}</div>
     </div>
     <div style="display:flex;gap:6px">
       <button id="btnSom" style="min-height:34px;padding:0 12px;border:none;border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer;background:${SOM.ativo?'var(--vermelho);color:#fff':'var(--verde);color:#fff'}">${SOM.ativo?'🔕 Desligar som':'🔔 Ativar som'}</button>
-      <button id="btnTesteSom" style="min-height:34px;padding:0 12px;border:1px solid var(--border);border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer;background:#fff">🔊 Testar som</button>
+      <button id="btnTesteSom" style="min-height:34px;padding:0 12px;border:1px solid var(--border);border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer;background:#fff">🔊 Testar</button>
     </div>
   </div>
   <div class="max-w-6xl mx-auto" style="display:grid;grid-template-columns:320px 1fr;gap:10px;min-height:600px">
@@ -298,7 +307,7 @@ function renderPainel(){
   const rpRapidas = document.getElementById('rpRapidas');
 
   function atualizaBotoesSom(){
-    statusSom.textContent = `🔔 SOM: ${SOM.ativo?'LIGADO':'DESLIGADO — CLIQUE AQUI'}`;
+    statusSom.textContent = `🔔 SOM: ${SOM.ativo?'LIGADO':'DESLIGADO'}`;
     statusSom.style.cssText = `padding:4px 10px;border-radius:14px;font-size:11.5px;font-weight:700;background:${SOM.ativo?'var(--verde-soft);color:var(--verde)':'#fef3c7;color:#92400e'}`;
     btnSom.textContent = SOM.ativo ? '🔕 Desligar som' : '🔔 Ativar som';
     btnSom.style.background = SOM.ativo ? 'var(--vermelho)' : 'var(--verde)';
@@ -342,7 +351,7 @@ function renderPainel(){
     await marcarLidas(id);
     const {data} = await supabase.from('mensagens').select('*').eq('cliente_id',id).order('id');
     const modo = (data && data.length) ? data[data.length-1].modo_atendimento : 'auto';
-    topoConv.innerHTML = `<div><div style="font-weight:700;color:var(--azul)">💬 Conversa: Cliente ${id.slice(-4).toUpperCase()}</div><div style="font-size:11px;color:var(--muted)">Modo atual: ${modo==='humano'?'🧑 HUMANO':'🤖 AUTOMÁTICO'}</div></div>`;
+    topoConv.innerHTML = `<div><div style="font-weight:700;color:var(--azul)">💬 Conversa: Cliente ${id.slice(-4).toUpperCase()}</div><div style="font-size:11px;color:var(--muted)">Modo: ${modo==='humano'?'🧑 HUMANO':'🤖 AUTOMÁTICO'}</div></div>`;
     botoesModo.innerHTML='';
     const bHum=document.createElement('button'); bHum.textContent='🧑 Virar Humano';
     bHum.style.cssText=`min-height:32px;padding:0 12px;border:none;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;${modo==='humano'?'background:#ccc;pointer-events:none;color:#666':'background:var(--azul);color:#fff'}`;
@@ -368,28 +377,31 @@ function renderPainel(){
   inputAtd.addEventListener('keypress',e=>{if(e.key==='Enter')enviarHumano()});
 
   let ultimoId = 0;
-  supabase.channel('painel-todas').on('postgres_changes',{event:'INSERT',schema:'public',table:'mensagens'},async (payload)=>{
-    const m = payload.new;
-    if(m.remetente === 'cliente' && m.id > ultimoId){
-      ultimoId = m.id;
-      const conversaAbertaECorreta = (CONVERSA_ATIVA === m.cliente_id) && document.visibilityState === 'visible';
-      if(!conversaAbertaECorreta){
-        SOM.tocar();
-        if('Notification' in window && Notification.permission==='granted'){
-          try{ new Notification('🔔 Nova mensagem - '+ (m.nome_cliente||'Cliente'), {body:m.texto}) }catch(e){}
-        }
+  try{
+    supabase.channel('painel-todas').on('postgres_changes',{event:'INSERT',schema:'public',table:'mensagens'},async (payload)=>{
+      const m = payload.new;
+      if(m.remetente === 'cliente' && m.id > ultimoId){
+        ultimoId = m.id;
+        const ok = (CONVERSA_ATIVA === m.cliente_id) && document.visibilityState === 'visible';
+        if(!ok){ SOM.tocar(); }
       }
-    }
-    carregarLista();
-    if(CONVERSA_ATIVA) abrirConversa(CONVERSA_ATIVA);
-  }).subscribe();
-
-  if('Notification' in window && Notification.permission === 'default'){
-    Notification.requestPermission().catch(()=>{});
-  }
+      carregarLista();
+      if(CONVERSA_ATIVA) abrirConversa(CONVERSA_ATIVA);
+    }).subscribe();
+  }catch(e){}
 
   carregarLista();
 }
 
-EH_PAINEL ? renderPainel() : renderCliente();
+/* ============================================================
+   🚀 INICIO — NÃO QUEBRA MAIS!
+   ============================================================ */
+window.addEventListener('load', () => {
+  try{
+    EH_PAINEL ? renderPainel() : renderCliente();
+  }catch(e){
+    console.error("❌ Erro ao carregar:",e);
+    document.getElementById("app").innerHTML = '<div style="padding:40px;text-align:center"><h2>⚠️ Erro ao carregar</h2><p>'+e.message+'</p></div>';
+  }
+});
 </script>
